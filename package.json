@@ -13,7 +13,8 @@
     "elb-log-parser": "0.0.2",
     "path": "0.12.7",
     "stream": "0.0.2",
-    "byline": "4.2.1"
+    "byline": "4.2.1",
+    "unzip": "0.1.11"
   },
   "repository": "https://github.com/blmr/aws-elb-logs-to-elasticsearch.git",
   "license": "Amazon Software License"

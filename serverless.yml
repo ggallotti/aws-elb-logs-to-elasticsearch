@@ -1,0 +1,22 @@
+# serverless.yml
+service: aws-elb-logs-to-elasticsearch
+
+provider:
+  name: aws
+  runtime: nodejs8.10
+  memorySize: 512
+  timeout: 600
+  stage: production # make sure to change this to production
+  profile: ligamx
+  
+  
+functions:
+  hello:
+    handler: index.handler
+    name: aws-elb-logs-to-aws-elasticsearch
+    description: Automatically send ELB logs to AWS ElasticSearch  
+    memorySize: 512
+    timeout: 660
+    reservedConcurrency: 5
+    role: arn:aws:iam::459123567387:role/gx-aws-serverless-role
+    
