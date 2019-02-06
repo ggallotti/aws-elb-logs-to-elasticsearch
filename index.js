@@ -4,7 +4,7 @@
  * and add them to an Amazon Elasticsearch Service domain.
  *
  *
- * Copyright 2019- Amazon.com, Inc. or its affiliates.  
+ * Copyright 2019- Amazon.com, Inc. or its affiliates.
  *
  * Licensed under the Amazon Software License (the "License").
  * You may not use this file except in compliance with the License.
@@ -60,9 +60,9 @@ function s3LogsToES(bucket, key, context, lineStream, recordStream) {
 	// (as part of the Event Source "suffix" setting).
 	deleteParam.Bucket = bucket;
 	deleteParam.Delete.Objects.push({
-			Key: key
-		});
-	
+		Key: key
+	});
+
 	var s3Stream = s3.getObject({
 			Bucket: bucket,
 			Key: key
@@ -76,9 +76,7 @@ function s3LogsToES(bucket, key, context, lineStream, recordStream) {
 	.pipe(lineStream)
 	.pipe(recordStream)
 	.on('data', function (parsedEntry) {
-		postDocumentToES(indexName, parsedEntry, context, {
-			Key: key
-		});
+		postDocumentToES(indexName, parsedEntry, context);
 	});
 
 	s3Stream.on('error', function () {
@@ -89,12 +87,29 @@ function s3LogsToES(bucket, key, context, lineStream, recordStream) {
 	});
 }
 
+function addCustomFields(doc) {
+	try {
+		if (typeof(doc) == 'string')
+		{
+			doc = JSON.parse(doc);
+		}
+		var webAppName = doc.request_uri_path.match("^\/([a-z0-9]+)/")[1];
+		if (webAppName) {
+			doc.request_uri_base = webAppName;
+		}
+	} catch (e) {
+		console.log(typeof(doc), doc, e);
+	}
+	return JSON.stringify(doc);
+}
 /*
  * Add the given document to the ES domain.
  * If all records are successfully added, indicate success to lambda
  * (using the "context" parameter).
  */
-function postDocumentToES(indexName, doc, context, s3ObjInfo) {
+function postDocumentToES(indexName, doc, context) {
+
+	doc = addCustomFields(doc);
 	var req = new AWS.HttpRequest(endpoint);
 
 	req.method = 'POST';
@@ -111,20 +126,19 @@ function postDocumentToES(indexName, doc, context, s3ObjInfo) {
 
 	// Post document to ES
 	var send = new AWS.NodeHttpClient();
-
-	//console.log("postDocumentToES", JSON.stringify(doc));
+	
 	send.handleRequest(req, null, function (httpResp) {
 		var body = '',
 		status = httpResp.statusCode;
 		httpResp.on('error', function (chunk) {
-			console.log("ERROR:", JSON.stringify(doc), chunk);
+			console.log("ERROR:", doc, chunk);
 		});
 		httpResp.on('data', function (chunk) {
 			body += chunk;
 		});
 
 		httpResp.on('end', function (chunk) {
-			numDocsAdded++;			
+			numDocsAdded++;
 			if (numDocsAdded === totLogLines && status >= 200 && status <= 399) {
 				// Mark lambda success.  If not done so, it will be retried.
 				console.log('All ' + numDocsAdded + ' log records added to ES.');
@@ -136,7 +150,7 @@ function postDocumentToES(indexName, doc, context, s3ObjInfo) {
 						console.log('Deleted all indexed documents', data);
 						context.succeed();
 					}
-				});				
+				});
 			}
 		});
 	}, function (err) {

@@ -16,7 +16,6 @@ functions:
     name: aws-elb-logs-to-aws-elasticsearch
     description: Automatically send ELB logs to AWS ElasticSearch  
     memorySize: 512
-    timeout: 660
-    reservedConcurrency: 5
+    timeout: 600    
     role: arn:aws:iam::459123567387:role/gx-aws-serverless-role
     
