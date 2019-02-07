@@ -35,13 +35,9 @@ var endpoint = new AWS.Endpoint(esDomain.endpoint);
 var s3 = new AWS.S3();
 var totLogLines = 0; // Total number of log lines in the file
 var numDocsAdded = 0; // Number of log lines added to ES so far
-var deleteParam = {
-	Bucket: '',
-	Delete: {
-		Objects: [
-		]
-	}
-};
+
+var deleteOp = {};
+
 /*
  * The AWS credentials are picked up from the environment.
  * They belong to the IAM role assigned to the Lambda function.
@@ -51,6 +47,23 @@ var deleteParam = {
  */
 var creds = new AWS.EnvironmentCredentials('AWS');
 
+function addFileToDelete(bucket, key) {
+	if (deleteOp[bucket]) {
+		deleteOp[bucket].Delete.Objects.push({
+			Key: key
+		});
+	} else {
+		deleteOp[bucket] = {
+			Bucket: bucket,
+			Delete: {
+				Objects: [{
+						Key: key
+					}
+				]
+			}
+		};
+	}
+}
 /*
  * Get the log file from the given S3 bucket and key.  Parse it and add
  * each log record to the ES domain.
@@ -58,10 +71,8 @@ var creds = new AWS.EnvironmentCredentials('AWS');
 function s3LogsToES(bucket, key, context, lineStream, recordStream) {
 	// Note: The Lambda function should be configured to filter for .log files
 	// (as part of the Event Source "suffix" setting).
-	deleteParam.Bucket = bucket;
-	deleteParam.Delete.Objects.push({
-		Key: key
-	});
+
+	addFileToDelete(bucket, key);
 
 	var s3Stream = s3.getObject({
 			Bucket: bucket,
@@ -89,8 +100,7 @@ function s3LogsToES(bucket, key, context, lineStream, recordStream) {
 
 function addCustomFields(doc) {
 	try {
-		if (typeof(doc) == 'string')
-		{
+		if (typeof(doc) == 'string') {
 			doc = JSON.parse(doc);
 		}
 		var webAppName = doc.request_uri_path.match("^\/([a-z0-9]+)/")[1];
@@ -102,6 +112,7 @@ function addCustomFields(doc) {
 	}
 	return JSON.stringify(doc);
 }
+
 /*
  * Add the given document to the ES domain.
  * If all records are successfully added, indicate success to lambda
@@ -120,13 +131,12 @@ function postDocumentToES(indexName, doc, context) {
 	req.headers['Host'] = endpoint.host;
 	req.headers['Content-Type'] = 'application/json';
 
-	// Sign the request (Sigv4)
 	var signer = new AWS.Signers.V4(req, 'es');
 	signer.addAuthorization(creds, new Date());
 
 	// Post document to ES
 	var send = new AWS.NodeHttpClient();
-	
+
 	send.handleRequest(req, null, function (httpResp) {
 		var body = '',
 		status = httpResp.statusCode;
@@ -142,14 +152,26 @@ function postDocumentToES(indexName, doc, context) {
 			if (numDocsAdded === totLogLines && status >= 200 && status <= 399) {
 				// Mark lambda success.  If not done so, it will be retried.
 				console.log('All ' + numDocsAdded + ' log records added to ES.');
-				s3.deleteObjects(deleteParam, function (err, data) {
-					if (err) {
-						console.log("Error Deleting Documents", JSON.stringify(deleteParam), err, err.stack);
-						context.fail();
-					} else {
-						console.log('Deleted all indexed documents', data);
-						context.succeed();
-					}
+				var keys = Object.keys(deleteOp);
+				var deletedOK = 0;
+				var deletedError = 0;
+				keys.forEach(function (key) {
+					var deleteParam = deleteOp[key];
+					s3.deleteObjects(deleteParam, function (err, data) {
+						if (err) {
+							deletedError++;
+							console.log("Error Deleting Documents", JSON.stringify(deleteParam), err, err.stack);
+						} else {
+							deletedOK++;
+							console.log('Deleted all indexed documents', JSON.stringify(deleteParam), JSON.stringify(data));
+						}
+						if ((deletedOK + deletedError - keys.length) == 0) {
+							if (deletedOK = keys.length)
+								context.succeed();
+							else
+								context.fail();
+						}
+					});
 				});
 			}
 		});

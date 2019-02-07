@@ -15,7 +15,8 @@ functions:
     handler: index.handler
     name: aws-elb-logs-to-aws-elasticsearch
     description: Automatically send ELB logs to AWS ElasticSearch  
-    memorySize: 512
-    timeout: 600    
+    memorySize: 384
+    timeout: 360
+    reservedConcurrency: 5  #In order not to collapse elastic search server. 
     role: arn:aws:iam::459123567387:role/gx-aws-serverless-role
     
